@@ -1,0 +1,6 @@
+# Cのビルド生成物
+*.o
+*.obj
+*.exe
+*.out
+build/
