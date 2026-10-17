@@ -87,6 +87,8 @@ CPUStatus cpu_step(CPU *cpu) {
                     cpu->regs[a] = cpu->regs[b] >> (cpu->regs[c] & 0xF);
                     cpu->pc += 4;
                     break;
+                default:
+                    return CPU_INVALID_INSTRUCTION;
             }
             break;
         case FMT_I:
@@ -140,6 +142,8 @@ CPUStatus cpu_step(CPU *cpu) {
                     }
                     break;
                 }
+                default:
+                    return CPU_INVALID_INSTRUCTION;
             }
             break;
         case FMT_B:
@@ -175,18 +179,20 @@ CPUStatus cpu_step(CPU *cpu) {
                         cpu->pc += 4;
                     }
                     break;
+                default:
+                    return CPU_INVALID_INSTRUCTION;
             }
             break;
         case FMT_J:
             switch (op) {
                 case OP_JMP:
-                    if (a != 0 || b != 0 || c != 0) {
+                    if (a != 0 || b != 0 || c != 0 || (int16_t)imm % 4 != 0) {
                         return CPU_INVALID_INSTRUCTION;
                     }
                     cpu->pc = (uint16_t)(cpu->pc + 4 + (int16_t)imm);
                     break;
                 case OP_JAL:
-                    if (b != 0 || c != 0) {
+                    if (b != 0 || c != 0 || (int16_t)imm % 4 != 0) {
                         return CPU_INVALID_INSTRUCTION;
                     }
                     cpu->regs[a] = cpu->pc + 4;
@@ -225,6 +231,8 @@ CPUStatus cpu_step(CPU *cpu) {
                     } 
                     cpu->pc += 4;
                     break;
+                default:
+                    return CPU_INVALID_INSTRUCTION;
             }
             break;
     }
