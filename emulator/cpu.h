@@ -18,46 +18,68 @@ typedef struct {
 } CPU;
 
 typedef enum {
-    R_FMT,
-    I_FMT,
-    B_FMT,
-    J_FMT
+    FMT_R,
+    FMT_I,
+    FMT_B,
+    FMT_J
 } Fmt;
 
 typedef enum {
-    MOV_OP,
-    ADD_OP,
-    SUB_OP,
-    AND_OP,
-    OR_OP,
-    XOR_OP,
-    SHL_OP,
-    SHR_OP
+    OP_MOV,
+    OP_ADD,
+    OP_SUB,
+    OP_AND,
+    OP_OR,
+    OP_XOR,
+    OP_SHL,
+    OP_SHR
 } OpR;
 
 typedef enum {
-    LDI_OP,
-    ADDI_OP,
-    LD8_OP,
-    LD16_OP,
-    ST8_OP,
-    ST16_OP
+    OP_LDI,
+    OP_ADDI,
+    OP_LD8,
+    OP_LD16,
+    OP_ST8,
+    OP_ST16
 } OpI;
 
 typedef enum {
-    BEQ_OP,
-    BNE_OP,
-    BLT_OP,
-    BGE_OP
+    OP_BEQ,
+    OP_BNE,
+    OP_BLT,
+    OP_BGE
 } OpB;
 
 typedef enum {
-    JMP_OP,
-    JAL_OP,
-    JR_OP,
-    JALR_OP,
-    HALT_OP,
-    TRAP_OP
+    OP_JMP,
+    OP_JAL,
+    OP_JR,
+    OP_JALR,
+    OP_HALT,
+    OP_TRAP
 } OpJ;
+
+typedef enum {
+    CPU_OK,
+    CPU_HALTED,
+    CPU_INVALID_PC,
+    CPU_INVALID_INSTRUCTION,
+    CPU_MISALIGNED_ACCESS,
+    CPU_UNSUPPORTED_TRAP,
+    CPU_STEP_LIMIT
+} CPUStatus;
+
+void cpu_init(CPU *cpu);
+
+bool load_program(CPU *cpu, uint32_t *program, size_t length);
+
+CPUStatus cpu_step(CPU *cpu);
+
+CPUStatus cpu_run(CPU *cpu, size_t max_steps);
+
+void display(CPU *cpu);
+
+uint32_t build_instruction(uint32_t fmt, uint32_t op, uint32_t a, uint32_t b, uint32_t c, uint32_t imm);
 
 #endif

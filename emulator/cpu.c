@@ -11,29 +11,24 @@ void cpu_init(CPU *cpu) {
     cpu->halted = false;
 }
 
-void load_program(CPU *cpu, uint32_t *program, size_t length) {
-    if (length * 4 > MEMORY_SIZE) {
-        puts("Out of memory");
-        return;
+bool load_program(CPU *cpu, uint32_t *program, size_t length) {
+    if (length > MEMORY_SIZE / 4) {
+        return false;
     }
 
     for (size_t i = 0; i < length; i++) {
         size_t address = i * 4;
-        cpu->memory[address] = program[i] & 0xFF;
-        cpu->memory[address + 1] = (program[i] >> 8) & 0xFF;
-        cpu->memory[address + 2] = (program[i] >> 16) & 0xFF;
-        cpu->memory[address + 3] = (program[i] >> 24) & 0xFF;
+        cpu->memory[address] = (uint8_t)(program[i] & 0xFF);
+        cpu->memory[address + 1] = (uint8_t)((program[i] >> 8) & 0xFF);
+        cpu->memory[address + 2] = (uint8_t)((program[i] >> 16) & 0xFF);
+        cpu->memory[address + 3] = (uint8_t)((program[i] >> 24) & 0xFF);
     }
+    return true;
 }
 
-bool step(CPU *cpu) {
-    if (cpu->halted) {
-        return false;
-    }
-
+CPUStatus cpu_step(CPU *cpu) {
     if (cpu->pc % 4 != 0 || cpu->pc + 4 > MEMORY_SIZE) {
-        puts("Invalid PC");
-        return false;
+        return CPU_INVALID_PC;
     }
 
     uint32_t instruction = 
@@ -42,128 +37,208 @@ bool step(CPU *cpu) {
         ((uint32_t)cpu->memory[cpu->pc + 2] << 16) | 
         ((uint32_t)cpu->memory[cpu->pc + 3] << 24);
 
-    uint8_t fmt = (instruction >> 30) & 0b11;
-    uint8_t op = (instruction >> 25) & 0b11111;
+    uint32_t fmt =(instruction >> 30) & 0x3;
+    uint32_t op = (instruction >> 25) & 0x1F;
     
-    uint8_t a = (instruction >> 22) & 0b111;
-    uint8_t b = (instruction >> 19) & 0b111;
-    uint8_t c = (instruction >> 16) & 0b111;
+    uint32_t a = (instruction >> 22) & 0x7;
+    uint32_t b = (instruction >> 19) & 0x7;
+    uint32_t c = (instruction >> 16) & 0x7;
 
-    uint16_t imm = instruction & 0xFFFF;
+    uint32_t imm = instruction & 0xFFFF;
 
     switch (fmt) {
-        case R_FMT:
+        case FMT_R:
+            if (imm != 0) {
+                return CPU_INVALID_INSTRUCTION;
+            }
             switch (op) {
-                case MOV_OP:
+                case OP_MOV:
+                    if (c != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
                     cpu->regs[a] = cpu->regs[b];
                     cpu->pc += 4;
-                    return true;
-                case ADD_OP:
+                    break;
+                case OP_ADD:
                     cpu->regs[a] = cpu->regs[b] + cpu->regs[c];
                     cpu->pc += 4;
-                    return true;
-                case SUB_OP:
+                    break;
+                case OP_SUB:
                     cpu->regs[a] = cpu->regs[b] - cpu->regs[c];
                     cpu->pc += 4;
-                    return true;
-                default:
-                    return false;
-            }
-            break;
-        case I_FMT:
-            switch (op) {
-                case LDI_OP:
-                    cpu->regs[a] = imm;
+                    break;
+                case OP_AND:
+                    cpu->regs[a] = cpu->regs[b] & cpu->regs[c];
                     cpu->pc += 4;
-                    return true;
-                case ADDI_OP:
-                    cpu->regs[a] = cpu->regs[b] + (int16_t)imm;
+                    break;
+                case OP_OR:
+                    cpu->regs[a] = cpu->regs[b] | cpu->regs[c];
                     cpu->pc += 4;
-                    return true;
-                case LD8_OP:
-                    return false;
-                case LD16_OP:
-                    return false;
-                case ST8_OP:
-                    return false;
-                case ST16_OP:
-                    return false;
-                default:
-                    return false;
+                    break;
+                case OP_XOR:
+                    cpu->regs[a] = cpu->regs[b] ^ cpu->regs[c];
+                    cpu->pc += 4;
+                    break;
+                case OP_SHL:
+                    cpu->regs[a] = cpu->regs[b] << (cpu->regs[c] & 0xF);
+                    cpu->pc += 4;
+                    break;
+                case OP_SHR:
+                    cpu->regs[a] = cpu->regs[b] >> (cpu->regs[c] & 0xF);
+                    cpu->pc += 4;
+                    break;
             }
             break;
-        case B_FMT:
+        case FMT_I:
+            if (c != 0) {
+                return CPU_INVALID_INSTRUCTION;
+            }
             switch (op) {
-                case BEQ_OP:
-                    return false;
-                case BNE_OP:
-                    return false;
-                case BLT_OP:
-                    return false;
-                case BGE_OP:
-                    return false;
-                default:
-                    return false;
+                case OP_LDI:
+                    if (b != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
+                    cpu->regs[a] = (uint16_t)imm;
+                    cpu->pc += 4;
+                    break;
+                case OP_ADDI:
+                    cpu->regs[a] = (uint16_t)(cpu->regs[b] + (int16_t)imm);
+                    cpu->pc += 4;
+                    break;
+                case OP_LD8: {
+                    uint16_t address = (uint16_t)(cpu->regs[b] + (int16_t)imm);
+                    cpu->regs[a] = (uint16_t)(cpu->memory[address] & 0xFF);
+                    cpu->pc += 4;
+                    break;
+                }
+                case OP_LD16: {
+                    uint16_t address = (uint16_t)(cpu->regs[b] + (int16_t)imm);
+                    if (address % 2 == 0) {
+                        cpu->regs[a] = 
+                            (uint16_t)cpu->memory[address] |
+                            ((uint16_t)cpu->memory[address + 1] << 8);
+                        cpu->pc += 4;
+                    } else {
+                        return CPU_MISALIGNED_ACCESS;
+                    }
+                    break;
+                }
+                case OP_ST8: {
+                    uint16_t address = (uint16_t)(cpu->regs[b] + (int16_t)imm);
+                    cpu->memory[address] = (uint8_t)(cpu->regs[a] & 0xFF);
+                    cpu->pc += 4;
+                    break;
+                }
+                case OP_ST16: {
+                    uint16_t address = (uint16_t)(cpu->regs[b] + (int16_t)imm);
+                    if (address % 2 == 0) {
+                        cpu->memory[address] = (uint8_t)(cpu->regs[a] & 0xFF);
+                        cpu->memory[address + 1] = (uint8_t)((cpu->regs[a] >> 8) & 0xFF);
+                        cpu->pc += 4;
+                    } else {
+                        return CPU_MISALIGNED_ACCESS;
+                    }
+                    break;
+                }
             }
             break;
-        case J_FMT:
+        case FMT_B:
+            if (c != 0 || (int16_t)imm % 4 != 0) {
+                return CPU_INVALID_INSTRUCTION;
+            }
             switch (op) {
-                case JMP_OP:
-                    return false;
-                case JAL_OP:
-                    return false;
-                case JR_OP:
-                    return false;
-                case JALR_OP:
-                    return false;
-                case HALT_OP:
+                case OP_BEQ:
+                    if (cpu->regs[a] == cpu->regs[b]) {
+                        cpu->pc = (uint16_t)(cpu->pc + 4 + (int16_t)imm);
+                    } else {
+                        cpu->pc += 4;
+                    }
+                    break;
+                case OP_BNE:
+                    if (cpu->regs[a] != cpu->regs[b]) {
+                        cpu->pc = (uint16_t)(cpu->pc + 4 + (int16_t)imm);
+                    } else {
+                        cpu->pc += 4;
+                    }
+                    break;
+                case OP_BLT:
+                    if ((int16_t)cpu->regs[a] < (int16_t)cpu->regs[b]) {
+                        cpu->pc = (uint16_t)(cpu->pc + 4 + (int16_t)imm);
+                    } else {
+                        cpu->pc += 4;
+                    }
+                    break;
+                case OP_BGE:
+                    if ((int16_t)cpu->regs[a] >= (int16_t)cpu->regs[b]) {
+                        cpu->pc = (uint16_t)(cpu->pc + 4 + (int16_t)imm);
+                    } else {
+                        cpu->pc += 4;
+                    }
+                    break;
+            }
+            break;
+        case FMT_J:
+            switch (op) {
+                case OP_JMP:
+                    if (a != 0 || b != 0 || c != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
+                    cpu->pc = (uint16_t)(cpu->pc + 4 + (int16_t)imm);
+                    break;
+                case OP_JAL:
+                    if (b != 0 || c != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
+                    cpu->regs[a] = cpu->pc + 4;
+                    cpu->pc = (uint16_t)(cpu->pc + 4 + (int16_t)imm);
+                    break;
+                case OP_JR:
+                    if (b != 0 || c != 0 || imm != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
+                    cpu->pc = cpu->regs[a];
+                    break;
+                case OP_JALR:
+                    if (c != 0 || imm != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
+                    uint16_t target = cpu->regs[b];
+                    cpu->regs[a] = cpu->pc + 4;
+                    cpu->pc = target;
+                    break;
+                case OP_HALT:
+                    if (a != 0 || b != 0 || c != 0 || imm != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
                     cpu->halted = true;
-                    return true;
-                case TRAP_OP:
-                    return false;
-                default:
-                    return false;
+                    return CPU_HALTED;
+                case OP_TRAP:
+                    if (a != 0 || b != 0 || c != 0) {
+                        return CPU_INVALID_INSTRUCTION;
+                    }
+                    switch (imm) {
+                        case 1:
+                            printf("%d", (int16_t)(cpu->regs[0]));
+                            break;
+                        default:
+                            return CPU_UNSUPPORTED_TRAP;
+                    } 
+                    cpu->pc += 4;
+                    break;
             }
             break;
-        default: 
-            return false;
     }
+    return CPU_OK;
 }
 
-void run(CPU *cpu) {
-    bool result = true;
-    size_t i = 0;
-    while (i < MAX_STEPS && result && !(cpu->halted)) {
-        result = step(cpu);
-        i += 1;
-    }
-    if (i >= MAX_STEPS) {
-        puts("Execution limit exceeded");
-    }
-    if (!result) {
-        printf("Step %zu failed\n", i);
-    }
-}
+CPUStatus cpu_run(CPU *cpu, size_t max_steps) {
+    for (size_t i = 0; i < max_steps; i++) {
+        CPUStatus status = cpu_step(cpu);
 
-void display(CPU *cpu) {
-    for (size_t i = 0; i < NUM_REGS; i++) {
-        printf("regs[%zu]: %u\n", i, cpu->regs[i]);
+        if (status != CPU_OK) {
+            return status;
+        }
     }
-    printf("PC: %u\n", cpu->pc);
-    if (cpu->halted) {
-        puts("halted: true");
-    } else {
-        puts("halted: false");
-    }
-}
 
-uint32_t build_instruction(uint32_t fmt, uint32_t op, uint32_t a, uint32_t b, uint32_t c, uint32_t imm) {
-    uint32_t instruction = 
-        (fmt << 30) | 
-        (op << 25) |
-        (a << 22) |
-        (b << 19) |
-        (c << 16) |
-        imm & 0xFFFF;
-    return instruction;
+    return CPU_STEP_LIMIT;
 }

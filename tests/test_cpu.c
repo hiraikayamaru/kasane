@@ -1,25 +1,46 @@
-#include "cpu.c"
+#include "../emulator/cpu.h"
+#include <assert.h>
 
-int main() {
-    uint32_t program[] = {
-        build_instruction(I_FMT, LDI_OP, 0, 0, 0, 5),
-        build_instruction(I_FMT, LDI_OP, 1, 0, 0, 7),
-        build_instruction(R_FMT, ADD_OP, 2, 0, 1, 0),
-        build_instruction(R_FMT, MOV_OP, 3, 2, 0, 0),
-        build_instruction(R_FMT, SUB_OP, 4, 3, 0, 0),
-        build_instruction(I_FMT, ADDI_OP, 5, 4, 0, -1),
-        build_instruction(J_FMT, HALT_OP, 0, 0, 0, 0)
-    };
+void display(CPU *cpu) {
+    for (size_t i = 0; i < NUM_REGS; i++) {
+        printf("regs[%zu]: %X\n", i, cpu->regs[i]);
+    }
+    printf("PC: %u\n", cpu->pc);
+    if (cpu->halted) {
+        puts("halted: true");
+    } else {
+        puts("halted: false");
+    }
+}
 
-    size_t length = sizeof(program) /sizeof(program[0]);
+uint32_t build_instruction(uint32_t fmt, uint32_t op, uint32_t a, uint32_t b, uint32_t c, uint32_t imm) {
+    uint32_t instruction = 
+        (fmt << 30) | 
+        (op << 25) |
+        (a << 22) |
+        (b << 19) |
+        (c << 16) |
+        (imm & 0xFFFF);
+    return instruction;
+}
 
-    CPU cpu = {0};
-
+void test_mov_same_register() {
+    CPU cpu;
     cpu_init(&cpu);
 
-    load_program(&cpu, program, length);
+    uint32_t program[] = {
+        build_instruction(FMT_R, OP_MOV, 1, 1, 0, 0)
+    };
 
-    run(&cpu);
+    load_program(&cpu, program, 1);
+    cpu.regs[1] = 0x0100;
 
-    display(&cpu);
+    CPUStatus status = cpu_step(&cpu);
+
+    assert(status == CPU_OK);
+    assert(cpu.regs[1] == 0x0100);
+}
+
+int main() {
+    test_mov_same_register();
 }
